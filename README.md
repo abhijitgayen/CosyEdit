@@ -30,14 +30,14 @@
 
 - Clone the repo
     ``` sh
-    git clone --recursive https://github.com/CJY1018/CosyEdit.git
+    git clone --recursive https://github.com/abhijitgayen/CosyEdit.git
     # If you failed to clone the submodule due to network failures, please run the following command until success
     cd CosyEdit
     git submodule update --init --recursive
     ```
 
 - Install Conda: please see https://docs.conda.io/en/latest/miniconda.html
-- Create Conda env:
+- Create Conda env (lightweight ONNX runtime inference support):
 
     ``` sh
     conda create -n cosyedit -y python=3.10

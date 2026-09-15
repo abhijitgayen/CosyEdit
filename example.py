@@ -113,10 +113,6 @@ def cosyvoice3_example():
 
 
 def main():
-    # cosyvoice_example()
-    # cosyvoice2_example()
-    # cosyvoice3_example()
-    
     cosyedit_example()
 
 
