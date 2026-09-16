@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Rust target
+target/
+**/target/
+
 # Visual Studio Code files
 .vscode
 .vs
@@ -35,7 +39,6 @@ exp
 data
 raw_wav
 tensorboard
-**/*build*
 
 # Clangd files
 .cache
