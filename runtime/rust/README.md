@@ -1,22 +1,19 @@
-# CosyEdit / CosyVoice Lightweight Rust Runtime (Python-Free Native ONNX Execution)
+# CosyEdit / CosyVoice Pure Rust Runtime (Python-Free Native ONNX Inference)
 
-This directory contains an optimized, lightweight, cross-platform Rust runtime server implementation for **CosyEdit** and **CosyVoice** with native **ONNX Runtime (`ort`) model inference**.
-
----
-
-## 🚀 Why Rust Runtime & Native ONNX?
-
-1. **Python-Free Execution**: Runs ONNX model graphs directly using Rust bindings to ONNX Runtime (`ort`), eliminating Python dependency, interpreter overhead, and Python GIL bottlenecks during inference.
-2. **High Concurrency & Parallel Request Processing**: Built on Rust's async runtime (`tokio`), REST server framework (`axum`), and gRPC framework (`tonic`). Efficiently handles simultaneous client requests with parallel worker pools.
-3. **Cross-Platform & Cross-Device Portability**: Easily compiles into a single, standalone binary for Linux, macOS, Windows, x86_64, ARM64, and resource-constrained edge/embedded devices.
-4. **Zero-Copy Streaming**: Synthesized audio PCM bytes stream back to callers via HTTP Chunked Transfer and gRPC Streams with minimal memory allocation and lower latency.
-5. **Flexible Execution Modes**:
-   - **Native ONNX Execution Mode**: Executes local ONNX model graphs directly in Rust.
-   - **High-Throughput Proxy Mode**: Option to proxy/load-balance requests to upstream Triton or Python worker backends.
+This directory contains a complete, high-performance, cross-platform Rust runtime server implementation for **CosyEdit** and **CosyVoice** powered by **ONNX Runtime (`ort`) native model inference**.
 
 ---
 
-## 🏗️ Architecture
+## 🚀 Why Pure Rust & Native ONNX Runtime?
+
+1. **Python-Free Execution**: Runs ONNX model graphs directly in Rust via `ort` ONNX Runtime bindings. Eliminates Python interpreter dependency, PyTorch runtime bloat, and Global Interpreter Lock (GIL) bottlenecks.
+2. **High Concurrency & Parallel Request Processing**: Built on Rust's async runtime (`tokio`), REST server framework (`axum`), and gRPC framework (`tonic`). Multi-threaded worker pools handle parallel client requests efficiently.
+3. **Cross-Platform & Embedded Device Portability**: Compiles into a single self-contained binary across Linux, macOS, Windows, x86_64, ARM64, and resource-constrained edge/embedded devices.
+4. **Zero-Copy Streaming**: Synthesized audio PCM bytes stream back to callers via HTTP Chunked Transfer and gRPC Streams with minimal memory allocation.
+
+---
+
+## 🏗️ System Architecture
 
 ```
                        ┌────────────────────────┐
@@ -36,61 +33,79 @@ This directory contains an optimized, lightweight, cross-platform Rust runtime s
                       │   Worker Pool Manager   │
                       └────────────┬────────────┘
                                    │
-               ┌───────────────────┴───────────────────┐
-               │                                       │
-     ┌─────────▼─────────┐                   ┌─────────▼─────────┐
-     │  Native Rust ONNX │                   │ Forwarding Proxy  │
-     │  ModelEngine (ort)│                   │ (Triton / Python) │
-     └───────────────────┘                   └───────────────────┘
+                      ┌────────────▼────────────┐
+                      │  Native Rust ONNX       │
+                      │  ModelEngine (ort)      │
+                      └────────────┬────────────┘
+                                   │
+         ┌─────────────────────────┼─────────────────────────┐
+         │                         │                         │
+┌────────▼────────┐       ┌────────▼────────┐       ┌────────▼────────┐
+│  campplus.onnx  │       │speech_tokenizer │       │  flow.decoder   │
+│ (Spk Embedding) │       │   _v2.onnx      │       │ .estimator.onnx │
+└─────────────────┘       └─────────────────┘       └─────────────────┘
 ```
 
 ---
 
-## 🛠️ Supported Endpoints
+## 📖 Step-by-Step Guide: Exporting & Loading ONNX Models
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/inference_sft` | `POST / GET` | Pre-trained SFT speaker synthesis. |
-| `/inference_zero_shot` | `POST (multipart)` | Zero-shot voice cloning with prompt text & audio. |
-| `/inference_cross_lingual` | `POST (multipart)` | Cross-lingual speech synthesis with prompt audio. |
-| `/inference_instruct` | `POST` | Instruct-guided speech synthesis with speaker ID. |
-| `/inference_instruct2` | `POST (multipart)` | Instruct-guided speech synthesis with prompt audio. |
-| `/inference_edit` | `POST (multipart)` | End-to-end multi-span speech editing (target text, original text, original speech). |
-| `CosyVoice/Inference` | `gRPC Stream` | High-performance gRPC streaming endpoint (`cosyvoice.proto`). |
+### Step 1: Export/Obtain ONNX Models
+
+Place your exported ONNX model files inside a directory (e.g. `pretrained_models/CosyEdit/`):
+
+- **`campplus.onnx`**: Speaker embedding extraction model.
+  - *Input*: `speech` `[batch_size, num_samples]` (f32 waveform at 16kHz)
+  - *Output*: `embedding` `[batch_size, 192]` (f32 speaker embedding vector)
+- **`speech_tokenizer_v2.onnx`** or **`speech_tokenizer_v3.onnx`**: Acoustic speech tokenizer model.
+  - *Input*: `speech` `[batch_size, num_samples]`
+  - *Output*: `speech_token` `[batch_size, num_tokens]` (i64 token IDs)
+- **`flow.decoder.estimator.fp32.onnx`**: Flow-matching decoder estimator model.
+  - *Input*: `tokens` `[batch_size, num_tokens]`, `embedding` `[batch_size, 192]`
+  - *Output*: `mel` `[batch_size, num_frames, num_mels]`
 
 ---
 
-## 📦 Building & Running
-
-### Prerequisites
-
-- **Rust toolchain** (`cargo` / `rustc` 1.70+)
-- **Protobuf compiler** (`protoc`)
-
-### Build
+### Step 2: Build Rust Runtime Binary
 
 ```bash
 cd runtime/rust
 cargo build --release
 ```
 
-### Run Native Rust ONNX Inference Mode
+---
+
+### Step 3: Launch Native Rust ONNX Inference Server
+
+To run the server in pure Rust ONNX execution mode loading ONNX models:
 
 ```bash
-./target/release/cosyedit-runtime \
+./target/release/cosyedit_runtime \
   --port 50000 \
   --grpc-port 50001 \
   --model-dir pretrained_models/CosyEdit
 ```
 
-### Run in Backend Proxy Mode
+CLI options:
+- `--port` (default: `50000`): HTTP REST API listening port.
+- `--grpc-port` (default: `50001`): gRPC server listening port.
+- `--host` (default: `0.0.0.0`): Network host interface.
+- `--model-dir`: Directory path containing the `.onnx` model files.
+- `--backend-url` *(optional)*: Remote fallback proxy endpoint URL.
 
-```bash
-./target/release/cosyedit-runtime \
-  --port 50000 \
-  --grpc-port 50001 \
-  --backend-url http://127.0.0.1:8000
-```
+---
+
+## 🛠️ Supported API Endpoints
+
+| Endpoint | Method | Payload / Description |
+|---|---|---|
+| `/inference_sft` | `POST / GET` | Pre-trained SFT speaker synthesis (`tts_text`, `spk_id`). |
+| `/inference_zero_shot` | `POST (multipart)` | Zero-shot voice cloning (`tts_text`, `prompt_text`, `prompt_wav`). |
+| `/inference_cross_lingual` | `POST (multipart)` | Cross-lingual speech synthesis (`tts_text`, `prompt_wav`). |
+| `/inference_instruct` | `POST` | Instruct-guided speech synthesis (`tts_text`, `spk_id`, `instruct_text`). |
+| `/inference_instruct2` | `POST (multipart)` | Instruct-guided speech synthesis (`tts_text`, `instruct_text`, `prompt_wav`). |
+| `/inference_edit` | `POST (multipart)` | End-to-end multi-span speech editing (`target_text`, `original_text`, `original_speech`). |
+| `CosyVoice/Inference` | `gRPC Stream` | High-performance gRPC streaming endpoint (`proto/cosyvoice.proto`). |
 
 ---
 
@@ -105,9 +120,9 @@ cargo test
 
 ---
 
-## 📝 Examples
+## 📝 Usage Example
 
-### Speech Editing HTTP Request
+### Speech Editing HTTP POST Request
 
 ```bash
 curl -X POST http://127.0.0.1:50000/inference_edit \
