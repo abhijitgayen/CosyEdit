@@ -30,9 +30,13 @@ struct Args {
     #[arg(long, default_value = "pretrained_models/CosyEdit")]
     model_dir: String,
 
-    /// Automatically download model assets if not found locally
+    /// Automatically download requested ONNX model files if not found locally
     #[arg(long, default_value_t = false)]
     download_models: bool,
+
+    /// Specific ONNX model file to download (e.g., campplus.onnx, all_onnx)
+    #[arg(long, default_value = "all_onnx")]
+    model_file: String,
 
     /// Optional upstream Python/Triton inference backend URL for forwarding requests
     #[arg(long)]
@@ -55,18 +59,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("  gRPC server:      grpc://{}", grpc_addr);
 
     let model_path = Path::new(&args.model_dir);
-    if !model_path.exists() && args.download_models {
-        tracing::info!("Model directory {} does not exist. Triggering download script...", args.model_dir);
+    if (!model_path.exists() || args.download_models) && args.download_models {
+        tracing::info!("Triggering selective ONNX model download for '{}'...", args.model_file);
         let status = Command::new("bash")
             .arg("../../tools/download_models.sh")
             .arg(&args.model_dir)
+            .arg("huggingface")
+            .arg(&args.model_file)
             .status();
         match status {
-            Ok(s) if s.success() => tracing::info!("Model download finished successfully."),
-            _ => tracing::warn!("Automatic model download failed. You can run tools/download_models.sh manually."),
+            Ok(s) if s.success() => tracing::info!("Selective ONNX model download finished successfully."),
+            _ => tracing::warn!("Selective model download failed. You can run tools/download_models.sh manually."),
         }
     } else if !model_path.exists() {
-        tracing::info!("Model path '{}' not found. Run 'tools/download_models.sh' or pass '--download-models' to fetch.", args.model_dir);
+        tracing::info!("Model path '{}' not found. Run 'tools/download_models.sh' or pass '--download-models --model-file campplus.onnx' to fetch selectively.", args.model_dir);
     }
 
     if let Some(ref backend) = args.backend_url {

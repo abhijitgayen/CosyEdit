@@ -13,50 +13,38 @@ This directory contains a complete, high-performance, cross-platform Rust runtim
 
 ---
 
-## 📥 Step-by-Step Guide: Downloading Pretrained Model Assets
+## 📥 Step-by-Step Guide: Selective ONNX Model Downloads
 
-### Option A: Automated Download Script (Recommended)
+### Selective Download Script (`tools/download_models.sh`)
 
-Use the provided shell script to download `pretrained_models/CosyEdit` from HuggingFace or ModelScope:
+Instead of downloading heavy PyTorch model checkpoints, you can download **only the specific ONNX model(s) requested**:
 
 ```bash
-# Download from HuggingFace (Default)
-./tools/download_models.sh pretrained_models/CosyEdit huggingface
+# 1. Download ONLY ONNX model files for Rust runtime (Default)
+./tools/download_models.sh pretrained_models/CosyEdit huggingface all_onnx
 
-# Or download from ModelScope
-./tools/download_models.sh pretrained_models/CosyEdit modelscope
+# 2. Download a single requested ONNX model (e.g. campplus.onnx)
+./tools/download_models.sh pretrained_models/CosyEdit huggingface campplus.onnx
+
+# 3. Download a single requested ONNX model (e.g. speech_tokenizer_v2.onnx)
+./tools/download_models.sh pretrained_models/CosyEdit huggingface speech_tokenizer_v2.onnx
+
+# 4. Download a single requested ONNX model (e.g. flow.decoder.estimator.fp32.onnx)
+./tools/download_models.sh pretrained_models/CosyEdit huggingface flow.decoder.estimator.fp32.onnx
+
+# 5. Download from ModelScope instead of HuggingFace
+./tools/download_models.sh pretrained_models/CosyEdit modelscope campplus.onnx
 ```
 
 ---
 
-### Option B: Download via HuggingFace Hub CLI
-
-```bash
-pip install huggingface_hub
-huggingface-cli download CJY/CosyEdit --local-dir pretrained_models/CosyEdit
-```
-
----
-
-### Option C: Download via ModelScope SDK
-
-```bash
-pip install modelscope
-python3 -c "from modelscope import snapshot_download; snapshot_download('CJY1018/CosyEdit', local_dir='pretrained_models/CosyEdit')"
-```
-
----
-
-### 📂 Expected Pretrained Model Assets Structure
-
-Once downloaded, `pretrained_models/CosyEdit/` will contain:
+### 📂 Pretrained Model Assets Structure
 
 ```
 pretrained_models/CosyEdit/
-├── campplus.onnx                    # Speaker embedding extraction model
-├── speech_tokenizer_v2.onnx         # Acoustic speech tokenizer model
-├── flow.decoder.estimator.fp32.onnx  # Flow-matching decoder estimator model
-└── ...
+├── campplus.onnx                    # Speaker embedding extraction model (~20MB)
+├── speech_tokenizer_v2.onnx         # Acoustic speech tokenizer model (~100MB)
+└── flow.decoder.estimator.fp32.onnx  # Flow-matching decoder estimator model (~300MB)
 ```
 
 ---
@@ -72,16 +60,18 @@ cargo build --release
 
 ---
 
-### Step 2: Launch Native Rust ONNX Server
+### Step 2: Launch Native Rust ONNX Server with Selective Auto-Download
 
-To run the server and automatically download model assets if missing:
+To run the server and automatically download only requested ONNX model files if missing:
 
 ```bash
+# Auto-download only the requested ONNX model files if missing
 ./target/release/cosyedit_runtime \
   --port 50000 \
   --grpc-port 50001 \
   --model-dir pretrained_models/CosyEdit \
-  --download-models
+  --download-models \
+  --model-file all_onnx
 ```
 
 CLI Options:
@@ -89,7 +79,8 @@ CLI Options:
 - `--grpc-port` (default: `50001`): gRPC server listening port.
 - `--host` (default: `0.0.0.0`): Network host interface.
 - `--model-dir` (default: `pretrained_models/CosyEdit`): Path to directory containing ONNX model files.
-- `--download-models`: Automatically fetch pretrained models if directory does not exist.
+- `--download-models`: Automatically fetch requested model files if directory/files do not exist.
+- `--model-file` (default: `all_onnx`): Specific requested ONNX model file to download (e.g. `campplus.onnx`, `speech_tokenizer_v2.onnx`, `all_onnx`).
 - `--backend-url` *(optional)*: Remote fallback proxy endpoint URL.
 
 ---
