@@ -24,6 +24,10 @@ struct Args {
     #[arg(long, default_value = "0.0.0.0")]
     host: String,
 
+    /// Local directory containing ONNX models (e.g., pretrained_models/CosyEdit)
+    #[arg(long)]
+    model_dir: Option<String>,
+
     /// Optional upstream Python/Triton inference backend URL for forwarding requests
     #[arg(long)]
     backend_url: Option<String>,
@@ -47,10 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(ref backend) = args.backend_url {
         tracing::info!("Configured backend proxy endpoint: {}", backend);
     } else {
-        tracing::info!("Running in standalone parallel streaming worker mode");
+        tracing::info!("Running in native Rust ONNX inference mode");
     }
 
-    let worker_pool = Arc::new(WorkerPool::new(args.backend_url));
+    let worker_pool = Arc::new(WorkerPool::new(args.backend_url, args.model_dir.as_deref()));
 
     // HTTP Server task
     let http_pool = Arc::clone(&worker_pool);

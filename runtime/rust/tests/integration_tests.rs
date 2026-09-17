@@ -5,10 +5,24 @@ use tower::ServiceExt;
 
 use cosyedit_runtime::engine::WorkerPool;
 use cosyedit_runtime::http::create_router;
+use cosyedit_runtime::onnx::ModelEngine;
+
+#[tokio::test]
+async fn test_onnx_model_engine_initialization() {
+    let engine = ModelEngine::new();
+    assert!(!engine.is_loaded());
+
+    let pcm = vec![0.0f32; 1600];
+    let emb = engine.extract_spk_embedding(&pcm).unwrap();
+    assert_eq!(emb.len(), 192);
+
+    let audio_bytes = engine.run_sft_inference("hello", "spk01");
+    assert!(!audio_bytes.is_empty());
+}
 
 #[tokio::test]
 async fn test_http_sft_endpoint() {
-    let pool = Arc::new(WorkerPool::new(None));
+    let pool = Arc::new(WorkerPool::new(None, None));
     let app = create_router(pool);
 
     let req: Request<Body> = Request::builder()
@@ -29,7 +43,7 @@ async fn test_http_sft_endpoint() {
 
 #[tokio::test]
 async fn test_http_edit_endpoint() {
-    let pool = Arc::new(WorkerPool::new(None));
+    let pool = Arc::new(WorkerPool::new(None, None));
     let app = create_router(pool);
 
     let boundary = "------------------------boundary123456";

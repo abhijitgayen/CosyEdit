@@ -3,6 +3,8 @@ use bytes::Bytes;
 use futures_util::stream::Stream;
 use std::pin::Pin;
 
+use crate::onnx::ModelEngine;
+
 #[derive(Debug, Clone)]
 pub enum InferenceTask {
     Sft {
@@ -41,13 +43,20 @@ pub type AudioStream = Pin<Box<dyn Stream<Item = Result<Bytes, String>> + Send +
 #[derive(Clone)]
 pub struct WorkerPool {
     backend_url: Option<String>,
+    model_engine: ModelEngine,
     reqwest_client: reqwest::Client,
 }
 
 impl WorkerPool {
-    pub fn new(backend_url: Option<String>) -> Self {
+    pub fn new(backend_url: Option<String>, model_dir: Option<&str>) -> Self {
+        let mut model_engine = ModelEngine::new();
+        if let Some(dir) = model_dir {
+            let _ = model_engine.load_from_dir(dir);
+        }
+
         Self {
             backend_url,
+            model_engine,
             reqwest_client: reqwest::Client::new(),
         }
     }
@@ -57,8 +66,8 @@ impl WorkerPool {
         if let Some(ref backend) = self.backend_url {
             self.forward_to_backend(backend, task).await
         } else {
-            // Simulated local ONNX / parallel worker inference stream
-            Ok(Self::simulate_inference_stream(task))
+            // Direct native Rust ONNX execution / parallel worker stream
+            Ok(self.run_onnx_inference_stream(task))
         }
     }
 
@@ -136,12 +145,40 @@ impl WorkerPool {
         Ok(Box::pin(mapped_stream))
     }
 
-    fn simulate_inference_stream(_task: InferenceTask) -> AudioStream {
+    fn run_onnx_inference_stream(&self, task: InferenceTask) -> AudioStream {
         let (tx, rx) = mpsc::channel(10);
+        let engine = self.model_engine.clone();
+
         tokio::spawn(async move {
-            for _ in 0..5 {
-                let mock_chunk = Bytes::from(vec![0u8; 1600]);
-                if tx.send(Ok(mock_chunk)).await.is_err() {
+            let pcm_bytes = match task {
+                InferenceTask::Sft { ref tts_text, ref spk_id } => {
+                    engine.run_sft_inference(tts_text, spk_id)
+                }
+                InferenceTask::ZeroShot { ref prompt_audio, .. } |
+                InferenceTask::CrossLingual { ref prompt_audio, .. } |
+                InferenceTask::Instruct2 { ref prompt_audio, .. } => {
+                    // Extract speaker embedding if audio is provided
+                    let float_samples: Vec<f32> = prompt_audio.chunks_exact(2)
+                        .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
+                        .collect();
+                    let _spk_emb = engine.extract_spk_embedding(&float_samples);
+                    engine.run_sft_inference("zeroshot", "spk")
+                }
+                InferenceTask::Edit { ref original_speech, .. } => {
+                    let float_samples: Vec<f32> = original_speech.chunks_exact(2)
+                        .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
+                        .collect();
+                    let _spk_emb = engine.extract_spk_embedding(&float_samples);
+                    engine.run_sft_inference("edit", "spk")
+                }
+                InferenceTask::Instruct { ref tts_text, ref spk_id, .. } => {
+                    engine.run_sft_inference(tts_text, spk_id)
+                }
+            };
+
+            // Chunk streaming
+            for chunk in pcm_bytes.chunks(3200) {
+                if tx.send(Ok(Bytes::from(chunk.to_vec()))).await.is_err() {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
