@@ -1,6 +1,8 @@
 use axum::extract::DefaultBodyLimit;
 use clap::Parser;
 use std::net::SocketAddr;
+use std::path::Path;
+use std::process::Command;
 use std::sync::Arc;
 use tonic::transport::Server as GrpcServer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -25,8 +27,12 @@ struct Args {
     host: String,
 
     /// Local directory containing ONNX models (e.g., pretrained_models/CosyEdit)
-    #[arg(long)]
-    model_dir: Option<String>,
+    #[arg(long, default_value = "pretrained_models/CosyEdit")]
+    model_dir: String,
+
+    /// Automatically download model assets if not found locally
+    #[arg(long, default_value_t = false)]
+    download_models: bool,
 
     /// Optional upstream Python/Triton inference backend URL for forwarding requests
     #[arg(long)]
@@ -48,13 +54,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("  HTTP REST server: http://{}", http_addr);
     tracing::info!("  gRPC server:      grpc://{}", grpc_addr);
 
+    let model_path = Path::new(&args.model_dir);
+    if !model_path.exists() && args.download_models {
+        tracing::info!("Model directory {} does not exist. Triggering download script...", args.model_dir);
+        let status = Command::new("bash")
+            .arg("../../tools/download_models.sh")
+            .arg(&args.model_dir)
+            .status();
+        match status {
+            Ok(s) if s.success() => tracing::info!("Model download finished successfully."),
+            _ => tracing::warn!("Automatic model download failed. You can run tools/download_models.sh manually."),
+        }
+    } else if !model_path.exists() {
+        tracing::info!("Model path '{}' not found. Run 'tools/download_models.sh' or pass '--download-models' to fetch.", args.model_dir);
+    }
+
     if let Some(ref backend) = args.backend_url {
         tracing::info!("Configured backend proxy endpoint: {}", backend);
     } else {
         tracing::info!("Running in native Rust ONNX inference mode");
     }
 
-    let worker_pool = Arc::new(WorkerPool::new(args.backend_url, args.model_dir.as_deref()));
+    let worker_pool = Arc::new(WorkerPool::new(args.backend_url, Some(&args.model_dir)));
 
     // HTTP Server task
     let http_pool = Arc::clone(&worker_pool);

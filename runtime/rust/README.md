@@ -13,60 +13,57 @@ This directory contains a complete, high-performance, cross-platform Rust runtim
 
 ---
 
-## 🏗️ System Architecture
+## 📥 Step-by-Step Guide: Downloading Pretrained Model Assets
 
-```
-                       ┌────────────────────────┐
-                       │   Client Application   │
-                       └───────────┬────────────┘
-                                   │
-                     ┌─────────────┴─────────────┐
-                     │ HTTP REST (50000) / gRPC (50001) │
-                     └─────────────┬─────────────┘
-                                   │
-                      ┌────────────▼────────────┐
-                      │    Rust Async Server    │
-                      │ (Tokio / Axum / Tonic)  │
-                      └────────────┬────────────┘
-                                   │
-                      ┌────────────▼────────────┐
-                      │   Worker Pool Manager   │
-                      └────────────┬────────────┘
-                                   │
-                      ┌────────────▼────────────┐
-                      │  Native Rust ONNX       │
-                      │  ModelEngine (ort)      │
-                      └────────────┬────────────┘
-                                   │
-         ┌─────────────────────────┼─────────────────────────┐
-         │                         │                         │
-┌────────▼────────┐       ┌────────▼────────┐       ┌────────▼────────┐
-│  campplus.onnx  │       │speech_tokenizer │       │  flow.decoder   │
-│ (Spk Embedding) │       │   _v2.onnx      │       │ .estimator.onnx │
-└─────────────────┘       └─────────────────┘       └─────────────────┘
+### Option A: Automated Download Script (Recommended)
+
+Use the provided shell script to download `pretrained_models/CosyEdit` from HuggingFace or ModelScope:
+
+```bash
+# Download from HuggingFace (Default)
+./tools/download_models.sh pretrained_models/CosyEdit huggingface
+
+# Or download from ModelScope
+./tools/download_models.sh pretrained_models/CosyEdit modelscope
 ```
 
 ---
 
-## 📖 Step-by-Step Guide: Exporting & Loading ONNX Models
+### Option B: Download via HuggingFace Hub CLI
 
-### Step 1: Export/Obtain ONNX Models
-
-Place your exported ONNX model files inside a directory (e.g. `pretrained_models/CosyEdit/`):
-
-- **`campplus.onnx`**: Speaker embedding extraction model.
-  - *Input*: `speech` `[batch_size, num_samples]` (f32 waveform at 16kHz)
-  - *Output*: `embedding` `[batch_size, 192]` (f32 speaker embedding vector)
-- **`speech_tokenizer_v2.onnx`** or **`speech_tokenizer_v3.onnx`**: Acoustic speech tokenizer model.
-  - *Input*: `speech` `[batch_size, num_samples]`
-  - *Output*: `speech_token` `[batch_size, num_tokens]` (i64 token IDs)
-- **`flow.decoder.estimator.fp32.onnx`**: Flow-matching decoder estimator model.
-  - *Input*: `tokens` `[batch_size, num_tokens]`, `embedding` `[batch_size, 192]`
-  - *Output*: `mel` `[batch_size, num_frames, num_mels]`
+```bash
+pip install huggingface_hub
+huggingface-cli download CJY/CosyEdit --local-dir pretrained_models/CosyEdit
+```
 
 ---
 
-### Step 2: Build Rust Runtime Binary
+### Option C: Download via ModelScope SDK
+
+```bash
+pip install modelscope
+python3 -c "from modelscope import snapshot_download; snapshot_download('CJY1018/CosyEdit', local_dir='pretrained_models/CosyEdit')"
+```
+
+---
+
+### 📂 Expected Pretrained Model Assets Structure
+
+Once downloaded, `pretrained_models/CosyEdit/` will contain:
+
+```
+pretrained_models/CosyEdit/
+├── campplus.onnx                    # Speaker embedding extraction model
+├── speech_tokenizer_v2.onnx         # Acoustic speech tokenizer model
+├── flow.decoder.estimator.fp32.onnx  # Flow-matching decoder estimator model
+└── ...
+```
+
+---
+
+## 📦 Building & Running the Rust Runtime
+
+### Step 1: Build Rust Binary
 
 ```bash
 cd runtime/rust
@@ -75,22 +72,24 @@ cargo build --release
 
 ---
 
-### Step 3: Launch Native Rust ONNX Inference Server
+### Step 2: Launch Native Rust ONNX Server
 
-To run the server in pure Rust ONNX execution mode loading ONNX models:
+To run the server and automatically download model assets if missing:
 
 ```bash
 ./target/release/cosyedit_runtime \
   --port 50000 \
   --grpc-port 50001 \
-  --model-dir pretrained_models/CosyEdit
+  --model-dir pretrained_models/CosyEdit \
+  --download-models
 ```
 
-CLI options:
+CLI Options:
 - `--port` (default: `50000`): HTTP REST API listening port.
 - `--grpc-port` (default: `50001`): gRPC server listening port.
 - `--host` (default: `0.0.0.0`): Network host interface.
-- `--model-dir`: Directory path containing the `.onnx` model files.
+- `--model-dir` (default: `pretrained_models/CosyEdit`): Path to directory containing ONNX model files.
+- `--download-models`: Automatically fetch pretrained models if directory does not exist.
 - `--backend-url` *(optional)*: Remote fallback proxy endpoint URL.
 
 ---
